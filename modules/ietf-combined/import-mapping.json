@@ -1,0 +1,9 @@
+{
+ "ietf-interfaces":["openconfig-interfaces", "oc-if"],
+ "ietf-netconf" : ["openconfig-netconf","oc-nc"],
+ "ietf-netconf-monitoring": ["openconfig-netconf-monitoring", "oc-ncm"],
+ "ietf-netconf-acm": ["openconfig-netconf-acm", "oc-nacm"],
+ "/if:interfaces/if:interface/ip:ipv6" : "/oc-if:interfaces/oc-if:interface/oc-ip:ipv6",
+ "/if:interfaces/if:interface" : "/oc-if:interfaces/oc-if:interface",
+ "/if:interfaces-state/if:interface" : "/oc-if:interfaces-state/oc-if:interface"
+}

@@ -18,10 +18,13 @@
 """@@@Module docstring"""
 
 
+import optparse
+import json 
+import sys 
 import copy
 from pyang import plugin
 from pyang import statements
-
+augfile = 0
 
 def i_to_o_list_keys(stmt, new_list):
     """Return a new list statement in OC format."""
@@ -156,27 +159,42 @@ def i_to_o_container(stmt):
 
     return new_node
 
+def aug_config(lookup_key,data_file):
+    with open (data_file, 'r') as f:
+        mappings = json.load(f);
+        oc_arg = mappings.get(lookup_key)
+        if oc_arg is None:
+            """No match found"""
+        return oc_arg
 
 def ietf_to_oc(module):
     """Return a new module tree in OpenConfig format."""
     module.arg += "-oc"
     module.i_modulename = module.arg
-
+    
+    if augfile == 0:
+        sys.exit("--augfile option missing")
+         
     if any(c.keyword == "augment" for c in module.substmts):
         # Find the IETF interfaces import and replace it with
         # Openconfig interfaces import.
-        imp = statements.Statement(module.top, module, module.pos,
-                                   "import", "openconfig-interfaces")
-        imp.i_module = module
-        pref = statements.Statement(module.top, module, module.pos,
-                                    "prefix", "oc-if")
-        pref.i_module = module
-        imp.substmts = [pref]
-
         for i, s in enumerate(module.substmts):
-            if s.keyword == "import" and "ietf-interfaces" in s.arg:
+            if (s.keyword == "import" and s.arg not in ["ietf-yang-types","ietf-inet-types"]):
+                map_key = aug_config(s.arg, augfile)
+                try:
+                    if map_key is None:
+                        raise Exception("No match found in import file")
+                except:
+                    break 
+                imp = statements.Statement(module.top, module, module.pos,
+                                   "import", map_key[0])
+                imp.i_module = module
+
+                pref = statements.Statement(module.top, module, module.pos,
+                                    "prefix", map_key[1])
+                pref.i_module = module
+                imp.substmts = [pref]
                 module.substmts[i] = imp
-                break
 
     # Iterate through the tree.
     # Looks for any list with config.
@@ -184,7 +202,9 @@ def ietf_to_oc(module):
         if child.keyword in ("container", "list", "augment"):
             new_node = i_to_o_container(child)
             if child.keyword == "augment":
-                new_node.arg = "/oc-if:interfaces/oc-if:interface"
+	        new_node.arg = aug_config(child.arg, augfile) 
+		if new_node.arg is None:
+		    new_node.arg = child.arg
             try:
                 index = module.i_children.index(child)
                 module.i_children[index] = new_node
@@ -205,11 +225,22 @@ class OpenConfigPlugin(plugin.PyangPlugin):
         ctx.implicit_errors = True
 
     def add_opts(self, optparser):
-        optparser.add_option("--ietf-to-oc", dest="ietf_to_oc",
-                             action="store_true",
-                             help="Convert IETF module format to OpenConfig")
+        optlist = [
+            optparse.make_option("--ietf-to-oc", dest="ietf_to_oc",
+                                 action="store_true",
+                                 help="Convert IETF module format to OpenConfig"),
 
+            optparse.make_option("--augfile", dest="augfile",
+                                 action="append",
+                                 help="Map and import IETF augments to openconfig augments"),
+            ]
+        optparser.add_options(optlist)
+        
     def post_validate_ctx(self, ctx, modules):
         # Run the plugin here.
+        global augfile
+        if ctx.opts.augfile is not None:
+            augfile = sys.argv[-2]
+
         if ctx.opts.ietf_to_oc:
             modules = [ietf_to_oc(m) for m in modules]
